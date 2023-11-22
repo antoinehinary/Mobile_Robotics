@@ -1,0 +1,212 @@
+import random
+import numpy as np
+import matplotlib.pyplot as plt
+from tdmclient import ClientAsync
+#client = ClientAsync()
+#node = await client.wait_for_node()
+#await node.lock()
+from threading import Timer
+from scipy.signal import find_peaks
+from tqdm import tqdm
+
+
+class RepeatedTimer(object):
+    def __init__(self, interval, function, *args, **kwargs):
+        self._timer     = None
+        self.interval   = interval
+        self.function   = function
+        self.args       = args
+        self.kwargs     = kwargs
+        self.is_running = False
+        self.start()
+
+    def _run(self):
+        self.is_running = False
+        self.start()
+        self.function(*self.args, **self.kwargs)
+
+    def start(self):
+        if not self.is_running:
+            self._timer = Timer(self.interval, self._run)
+            self._timer.start()
+            self.is_running = True
+
+    def stop(self):
+        self._timer.cancel()
+        self.is_running = False
+
+
+acquire_data = False
+Ts = 0.1
+thymio_data = []
+
+def motors(left, right):
+    return {
+        "motor.left.target": [left],
+        "motor.right.target": [right],
+    }
+
+def get_data():
+    thymio_data.append({"ground":list(node["prox.ground.reflected"]), 
+                        "sensor":list(node["prox.ground.reflected"]),
+                        "left_speed":node["motor.left.speed"],
+                        "right_speed":node["motor.right.speed"]})
+    
+
+if acquire_data:
+    #await node.wait_for_variables() # wait for Thymio variables values
+    rt = RepeatedTimer(Ts, get_data) # it auto-starts, no need of rt.start()
+
+    #try:
+        # time.sleep would not work here, use asynchronous client.sleep method instead
+        #await client.sleep(5)
+        #node.send_set_variables(motors(55, 50))
+        #await client.sleep(25) # your long-running job goes here...
+    #finally:
+        #rt.stop() # better in a try/finally block to make sure the program ends!
+        #node.send_set_variables(motors(0, 0))
+else:
+    thymio_data = [{'ground': [177, 496], 'sensor': [177, 496], 'left_speed': 0, 'right_speed': 65535}, {'ground': [178, 495], 'sensor': [178, 495], 'left_speed': 0, 'right_speed': 65535}, {'ground': [177, 495], 'sensor': [177, 495], 'left_speed': 0, 'right_speed': 65535}, {'ground': [177, 496], 'sensor': [177, 496], 'left_speed': 0, 'right_speed': 65535}, {'ground': [177, 495], 'sensor': [177, 495], 'left_speed': 0, 'right_speed': 65535}, {'ground': [178, 496], 'sensor': [178, 496], 'left_speed': 0, 'right_speed': 65535}, {'ground': [178, 495], 'sensor': [178, 495], 'left_speed': 0, 'right_speed': 65535}, {'ground': [177, 496], 'sensor': [177, 496], 'left_speed': 0, 'right_speed': 65535}, {'ground': [177, 496], 'sensor': [177, 496], 'left_speed': 0, 'right_speed': 65535}, {'ground': [178, 495], 'sensor': [178, 495], 'left_speed': 0, 'right_speed': 65535}, {'ground': [177, 495], 'sensor': [177, 495], 'left_speed': 0, 'right_speed': 65535}, {'ground': [177, 497], 'sensor': [177, 497], 'left_speed': 0, 'right_speed': 65535}, {'ground': [177, 495], 'sensor': [177, 495], 'left_speed': 0, 'right_speed': 65535}, {'ground': [177, 495], 'sensor': [177, 495], 'left_speed': 0, 'right_speed': 65535}, {'ground': [178, 496], 'sensor': [178, 496], 'left_speed': 0, 'right_speed': 65535}, {'ground': [180, 546], 'sensor': [180, 546], 'left_speed': 0, 'right_speed': 65535}, {'ground': [177, 454], 'sensor': [177, 454], 'left_speed': 0, 'right_speed': 65535}, {'ground': [97, 69], 'sensor': [97, 69], 'left_speed': 0, 'right_speed': 65535}, {'ground': [39, 41], 'sensor': [39, 41], 'left_speed': 0, 'right_speed': 0}, {'ground': [82, 47], 'sensor': [82, 47], 'left_speed': 0, 'right_speed': 65535}, {'ground': [34, 29], 'sensor': [34, 29], 'left_speed': 0, 'right_speed': 65535}, {'ground': [24, 9], 'sensor': [24, 9], 'left_speed': 0, 'right_speed': 65535}, {'ground': [899, 447], 'sensor': [899, 447], 'left_speed': 0, 'right_speed': 65535}, {'ground': [967, 631], 'sensor': [967, 631], 'left_speed': 0, 'right_speed': 65535}, {'ground': [972, 682], 'sensor': [972, 682], 'left_speed': 0, 'right_speed': 65535}, {'ground': [971, 675], 'sensor': [971, 675], 'left_speed': 0, 'right_speed': 65535}, {'ground': [970, 651], 'sensor': [970, 651], 'left_speed': 0, 'right_speed': 65535}, {'ground': [971, 642], 'sensor': [971, 642], 'left_speed': 0, 'right_speed': 65535}, {'ground': [970, 628], 'sensor': [970, 628], 'left_speed': 0, 'right_speed': 65535}, {'ground': [970, 628], 'sensor': [970, 628], 'left_speed': 0, 'right_speed': 65535}, {'ground': [970, 628], 'sensor': [970, 628], 'left_speed': 0, 'right_speed': 65535}, {'ground': [970, 627], 'sensor': [970, 627], 'left_speed': 0, 'right_speed': 65535}, {'ground': [970, 611], 'sensor': [970, 611], 'left_speed': 0, 'right_speed': 65535}, {'ground': [971, 604], 'sensor': [971, 604], 'left_speed': 0, 'right_speed': 0}, {'ground': [971, 598], 'sensor': [971, 598], 'left_speed': 0, 'right_speed': 65535}, {'ground': [972, 642], 'sensor': [972, 642], 'left_speed': 0, 'right_speed': 65535}, {'ground': [973, 714], 'sensor': [973, 714], 'left_speed': 0, 'right_speed': 65535}, {'ground': [973, 704], 'sensor': [973, 704], 'left_speed': 0, 'right_speed': 65535}, {'ground': [973, 702], 'sensor': [973, 702], 'left_speed': 0, 'right_speed': 0}, {'ground': [972, 700], 'sensor': [972, 700], 'left_speed': 0, 'right_speed': 65535}, {'ground': [973, 701], 'sensor': [973, 701], 'left_speed': 0, 'right_speed': 0}, {'ground': [974, 707], 'sensor': [974, 707], 'left_speed': 0, 'right_speed': 0}, {'ground': [974, 711], 'sensor': [974, 711], 'left_speed': 0, 'right_speed': 65535}, {'ground': [974, 707], 'sensor': [974, 707], 'left_speed': 0, 'right_speed': 65535}, {'ground': [972, 702], 'sensor': [972, 702], 'left_speed': 0, 'right_speed': 65535}, {'ground': [973, 686], 'sensor': [973, 686], 'left_speed': 0, 'right_speed': 65535}, {'ground': [972, 662], 'sensor': [972, 662], 'left_speed': 0, 'right_speed': 65535}, {'ground': [968, 602], 'sensor': [968, 602], 'left_speed': 0, 'right_speed': 65535}, {'ground': [954, 539], 'sensor': [954, 539], 'left_speed': 0, 'right_speed': 65535}, {'ground': [833, 464], 'sensor': [833, 464], 'left_speed': 0, 'right_speed': 65535}, {'ground': [826, 460], 'sensor': [826, 460], 'left_speed': 2, 'right_speed': 65535}, {'ground': [511, 244], 'sensor': [511, 244], 'left_speed': 39, 'right_speed': 31}, {'ground': [306, 131], 'sensor': [306, 131], 'left_speed': 49, 'right_speed': 35}, {'ground': [194, 87], 'sensor': [194, 87], 'left_speed': 58, 'right_speed': 57}, {'ground': [174, 84], 'sensor': [174, 84], 'left_speed': 64, 'right_speed': 42}, {'ground': [174, 84], 'sensor': [174, 84], 'left_speed': 38, 'right_speed': 32}, {'ground': [174, 84], 'sensor': [174, 84], 'left_speed': 38, 'right_speed': 32}, {'ground': [171, 84], 'sensor': [171, 84], 'left_speed': 58, 'right_speed': 30}, {'ground': [169, 81], 'sensor': [169, 81], 'left_speed': 49, 'right_speed': 56}, {'ground': [167, 80], 'sensor': [167, 80], 'left_speed': 42, 'right_speed': 55}, {'ground': [167, 81], 'sensor': [167, 81], 'left_speed': 46, 'right_speed': 35}, {'ground': [168, 80], 'sensor': [168, 80], 'left_speed': 59, 'right_speed': 57}, {'ground': [172, 81], 'sensor': [172, 81], 'left_speed': 63, 'right_speed': 54}, {'ground': [173, 84], 'sensor': [173, 84], 'left_speed': 45, 'right_speed': 56}, {'ground': [171, 84], 'sensor': [171, 84], 'left_speed': 60, 'right_speed': 55}, {'ground': [171, 84], 'sensor': [171, 84], 'left_speed': 60, 'right_speed': 55}, {'ground': [165, 84], 'sensor': [165, 84], 'left_speed': 54, 'right_speed': 36}, {'ground': [166, 86], 'sensor': [166, 86], 'left_speed': 57, 'right_speed': 43}, {'ground': [166, 86], 'sensor': [166, 86], 'left_speed': 41, 'right_speed': 43}, {'ground': [168, 87], 'sensor': [168, 87], 'left_speed': 59, 'right_speed': 47}, {'ground': [175, 96], 'sensor': [175, 96], 'left_speed': 42, 'right_speed': 48}, {'ground': [280, 157], 'sensor': [280, 157], 'left_speed': 61, 'right_speed': 50}, {'ground': [503, 262], 'sensor': [503, 262], 'left_speed': 60, 'right_speed': 49}, {'ground': [658, 355], 'sensor': [658, 355], 'left_speed': 46, 'right_speed': 36}, {'ground': [639, 345], 'sensor': [639, 345], 'left_speed': 49, 'right_speed': 57}, {'ground': [639, 345], 'sensor': [639, 345], 'left_speed': 49, 'right_speed': 57}, {'ground': [501, 257], 'sensor': [501, 257], 'left_speed': 42, 'right_speed': 51}, {'ground': [187, 88], 'sensor': [187, 88], 'left_speed': 45, 'right_speed': 60}, {'ground': [166, 85], 'sensor': [166, 85], 'left_speed': 53, 'right_speed': 56}, {'ground': [166, 84], 'sensor': [166, 84], 'left_speed': 60, 'right_speed': 55}, {'ground': [168, 84], 'sensor': [168, 84], 'left_speed': 50, 'right_speed': 53}, {'ground': [169, 85], 'sensor': [169, 85], 'left_speed': 57, 'right_speed': 47}, {'ground': [167, 87], 'sensor': [167, 87], 'left_speed': 49, 'right_speed': 41}, {'ground': [169, 86], 'sensor': [169, 86], 'left_speed': 47, 'right_speed': 45}, {'ground': [167, 84], 'sensor': [167, 84], 'left_speed': 66, 'right_speed': 33}, {'ground': [164, 85], 'sensor': [164, 85], 'left_speed': 56, 'right_speed': 62}, {'ground': [162, 85], 'sensor': [162, 85], 'left_speed': 43, 'right_speed': 54}, {'ground': [163, 85], 'sensor': [163, 85], 'left_speed': 54, 'right_speed': 58}, {'ground': [163, 85], 'sensor': [163, 85], 'left_speed': 41, 'right_speed': 54}, {'ground': [160, 84], 'sensor': [160, 84], 'left_speed': 59, 'right_speed': 56}, {'ground': [156, 82], 'sensor': [156, 82], 'left_speed': 52, 'right_speed': 60}, {'ground': [157, 82], 'sensor': [157, 82], 'left_speed': 64, 'right_speed': 48}, {'ground': [162, 83], 'sensor': [162, 83], 'left_speed': 64, 'right_speed': 56}, {'ground': [166, 82], 'sensor': [166, 82], 'left_speed': 47, 'right_speed': 55}, {'ground': [165, 91], 'sensor': [165, 91], 'left_speed': 41, 'right_speed': 44}, {'ground': [254, 156], 'sensor': [254, 156], 'left_speed': 67, 'right_speed': 59}, {'ground': [477, 279], 'sensor': [477, 279], 'left_speed': 53, 'right_speed': 57}, {'ground': [678, 391], 'sensor': [678, 391], 'left_speed': 57, 'right_speed': 59}, {'ground': [762, 426], 'sensor': [762, 426], 'left_speed': 67, 'right_speed': 57}, {'ground': [738, 394], 'sensor': [738, 394], 'left_speed': 41, 'right_speed': 50}, {'ground': [649, 332], 'sensor': [649, 332], 'left_speed': 60, 'right_speed': 56}, {'ground': [596, 319], 'sensor': [596, 319], 'left_speed': 65, 'right_speed': 59}, {'ground': [593, 321], 'sensor': [593, 321], 'left_speed': 47, 'right_speed': 48}, {'ground': [596, 325], 'sensor': [596, 325], 'left_speed': 58, 'right_speed': 33}, {'ground': [601, 330], 'sensor': [601, 330], 'left_speed': 58, 'right_speed': 55}, {'ground': [605, 331], 'sensor': [605, 331], 'left_speed': 48, 'right_speed': 54}, {'ground': [608, 331], 'sensor': [608, 331], 'left_speed': 42, 'right_speed': 43}, {'ground': [607, 330], 'sensor': [607, 330], 'left_speed': 64, 'right_speed': 55}, {'ground': [605, 329], 'sensor': [605, 329], 'left_speed': 46, 'right_speed': 42}, {'ground': [605, 329], 'sensor': [605, 329], 'left_speed': 55, 'right_speed': 61}, {'ground': [604, 330], 'sensor': [604, 330], 'left_speed': 52, 'right_speed': 56}, {'ground': [604, 330], 'sensor': [604, 330], 'left_speed': 43, 'right_speed': 47}, {'ground': [607, 331], 'sensor': [607, 331], 'left_speed': 64, 'right_speed': 54}, {'ground': [604, 332], 'sensor': [604, 332], 'left_speed': 63, 'right_speed': 57}, {'ground': [600, 334], 'sensor': [600, 334], 'left_speed': 56, 'right_speed': 61}, {'ground': [598, 335], 'sensor': [598, 335], 'left_speed': 64, 'right_speed': 57}, {'ground': [594, 337], 'sensor': [594, 337], 'left_speed': 60, 'right_speed': 51}, {'ground': [592, 339], 'sensor': [592, 339], 'left_speed': 49, 'right_speed': 48}, {'ground': [593, 350], 'sensor': [593, 350], 'left_speed': 57, 'right_speed': 50}, {'ground': [642, 404], 'sensor': [642, 404], 'left_speed': 58, 'right_speed': 45}]
+    
+    
+l_sensor = [x["ground"][0] for x in thymio_data]
+r_sensor = [x["ground"][1] for x in thymio_data]
+avg_ground = [(l+r)/2 for l, r in zip(l_sensor, r_sensor)]
+l_peaks = find_peaks(l_sensor, 610, 10)[0]
+
+
+# Thymio speed conversion
+speed_conv_factor = 0.3375
+l_speed = [x["left_speed"] for x in thymio_data]
+r_speed = [x["right_speed"] for x in thymio_data]
+avg_speed = [(x["left_speed"]+x["right_speed"])/2 for x in thymio_data]
+var_speed = np.var(np.array(avg_speed[55:]) / speed_conv_factor)
+std_speed = np.std(np.array(avg_speed[55:]) / speed_conv_factor)
+
+q_nu = std_speed/2 # variance on speed state
+r_nu = std_speed/2 # variance on speed measurement 
+
+qp = 0.04  # variance on position state
+rp = 0.25  # variance on position measurement
+
+# Initialising the remaining constants
+# units: length [mm], time [s]
+A = np.array([[1, 0, Ts, 0], [0, 1, 0, Ts], [0, 0, 1, 0], [0, 0, 0, 1]])
+stripe_width = 50
+Q = np.array([[qp, 0, 0, 0], [0, q_nu, 0, 0], [0, 0, qp, 0], [0, 0, 0, q_nu]])
+transition_thresh = 500
+
+def kalman_filter(speed, ground_prev, ground, pos_last_trans, x_est_prev, P_est_prev,
+                  HT=None, HNT=None, RT=None, RNT=None):
+    """
+    Estimates the current state using input sensor data and the previous state
+
+    :param speed: measured speed (Thymio units)
+    :param ground_prev: previous value of measured ground sensor
+    :param ground: measured ground sensor
+    :param pos_last_trans: position of the last transition detected by the ground sensor
+    :param x_est_prev: previous state a posteriori estimation
+    :param P_est_prev: previous state a posteriori covariance
+    :param HT: Transition matrix for the state (optional)
+    :param HNT: Transition matrix for the noise (optional)
+    :param RT: Measurement noise covariance matrix (optional)
+    :param RNT: Noise covariance matrix (optional)
+
+    :return pos_last_trans: updated if a transition has been detected
+    :return x_est: new a posteriori state estimation
+    :return P_est: new a posteriori state covariance
+    """
+
+    # Prediction through the a priori estimate
+    # estimated mean of the state
+    x_est_a_priori = np.dot(A, x_est_prev)
+
+    # Estimated covariance of the state
+    P_est_a_priori = np.dot(A, np.dot(P_est_prev, A.T)) + Q
+
+    # Update
+    # y, C, and R for a posteriori estimate, depending on transition
+    if ((ground_prev < transition_thresh) ^ (ground < transition_thresh)):  # XOR (one or the other but not both)
+        if ground > ground_prev:
+            # transition detected
+            pos_last_trans = pos_last_trans + stripe_width
+            y = np.array([[pos_last_trans], [speed * speed_conv_factor], [0], [0]])
+            H = np.array([[1, 0, 0, 0], [0, 1, 0, 0]])
+            R = np.array([[rp, 0], [0, r_nu]])
+        else:
+            # transition detected in the opposite direction
+            pos_last_trans = pos_last_trans - stripe_width
+            y = np.array([[pos_last_trans], [speed * speed_conv_factor], [0], [0]])
+            H = np.array([[1, 0, 0, 0], [0, 1, 0, 0]])
+            R = np.array([[rp, 0, 0, 0], [0, rp, 0, 0], [0, 0, r_nu, 0], [0, 0, 0, r_nu]])
+    else:
+        # no transition, use only the speed
+        y = np.array([[0], [speed * speed_conv_factor], [0], [0]])
+        H = np.array([[0, 0, 1, 0]])
+        R = r_nu
+
+    # Innovation / measurement residual
+    i = y - np.dot(H, x_est_a_priori)
+
+    # Measurement prediction covariance
+    S = np.dot(H, np.dot(P_est_a_priori, H.T)) + R
+
+    # Kalman gain (tells how much the predictions should be corrected based on the measurements)
+    K = np.dot(P_est_a_priori, np.dot(H.T, np.linalg.inv(S)))
+
+    # A posteriori estimate
+    x_est = (x_est_a_priori + np.dot(K, i)).flatten()
+    P_est = P_est_a_priori - np.dot(K, np.dot(H, P_est_a_priori))
+
+    return pos_last_trans, x_est, P_est
+
+
+
+x_est = [np.array([[0], [0], [0], [0]])]
+P_est = [1000 * np.ones((4, 4))]
+pos_trans = [0]
+k0 = 55
+ground = [avg_ground[k0-1]]
+speed = [avg_speed[k0-1]]
+
+for k in tqdm(range(55, len(thymio_data))):
+    speed.append(avg_speed[k])
+    ground.append(avg_ground[k])
+    
+    # Extract the last state, covariance, and pos_trans
+    x_est_prev = x_est[-1]
+    P_est_prev = P_est[-1]
+    pos_trans_prev = pos_trans[-1]
+
+    # Perform Kalman filter update
+    new_pos_last_trans, new_x_est, new_P_est = kalman_filter(
+        speed[-1], ground[-2], ground[-1], pos_trans_prev, x_est_prev, P_est_prev
+    )
+
+    # Append the updated values to the lists
+    x_est.append(new_x_est)
+    P_est.append(new_P_est)
+    pos_trans.append(new_pos_last_trans)
+
+# Visualize the results
+pos_increments = avg_speed[k0:] / (1 / (speed_conv_factor * Ts))
+odom_pos = np.cumsum(pos_increments)
+
+# Plot estimated and odometry positions
+plt.figure(figsize=(10, 6))
+plt.plot([x[0][0] for x in x_est], label="Estimated Position", linewidth=2)
+plt.plot(odom_pos, label="Odometry Position", linestyle='dashed', linewidth=2)
+plt.xlabel("Time step")
+plt.ylabel("Position (mm)")
+plt.legend()
+plt.title("Estimated vs Odometry Position")
+
+# Plot detected transitions
+plt.figure(figsize=(10, 4))
+plt.plot(pos_trans, label="Detected Transitions", marker='o', linestyle='None', color='r')
+plt.xlabel("Time step")
+plt.ylabel("Detected Transitions")
+plt.title("Detected Transitions")
+plt.legend()
+
+plt.show()

@@ -1,0 +1,221 @@
+from numpy import dot, zeros, eye
+import numpy.linalg as linalg
+import matplotlib.pyplot as plt
+import numpy.random as random
+import copy
+import numpy as np
+#from tdmclient import ClientAsync
+#client = ClientAsync()
+#node = await client.wait_for_node()
+#await node.lock()
+from threading import Timer
+from scipy.signal import find_peaks
+from tqdm import tqdm
+
+class KalmanFilter(object):
+    def __init__(self, dim_x, dim_z, dim_u=0):
+        self.dim_x = dim_x
+        self.dim_z = dim_z
+        self.dim_u = dim_u
+
+        self.x = zeros((dim_x, 1))        # state
+        self.P = eye(dim_x)               # uncertainty covariance
+        self.Q = eye(dim_x)               # process uncertainty
+        self.B = None                     # control transition matrix
+        self.F = eye(dim_x)               # state transition matrix
+        self.H = zeros((dim_z, dim_x))    # measurement function
+        self.R = eye(dim_z)               # measurement uncertainty
+        self.M = np.zeros((dim_x, dim_z)) # process-measurement cross correlation
+        self.z = np.array([[None]*self.dim_z]).T
+
+        self.K = np.zeros((dim_x, dim_z)) # kalman gain
+        self.y = zeros((dim_z, 1))
+        self.S = np.zeros((dim_z, dim_z)) 
+        self.SI = np.zeros((dim_z, dim_z)) 
+
+        self._I = np.eye(dim_x)
+
+        # these will always be a copy of x,P after predict() is called
+        self.x_prior = self.x.copy()
+        self.P_prior = self.P.copy()
+
+        # these will always be a copy of x,P after update() is called
+        self.x_post = self.x.copy()
+        self.P_post = self.P.copy()
+
+
+    def predict(self):
+        self.x = dot(self.F, self.x)
+        self.P = dot(dot(self.F, self.P), self.F.T) + self.Q
+
+    def update(self, z):
+        S = dot(dot(self.H, self.P), self.H.T) + self.R
+        K = dot(dot(self.P, self.H.T), linalg.inv(S))
+        self.x = self.x + dot(K, (z - dot(self.H, self.x)))
+        I = np.eye(self.H.shape[1])
+        self.P = dot(dot(I - np.dot(K, self.H), self.P), 
+                        (I - dot(K, self.H)).T) + dot(np.dot(K, self.R), K.T)
+
+class RepeatedTimer(object):
+    def __init__(self, interval, function, *args, **kwargs):
+        self._timer     = None
+        self.interval   = interval
+        self.function   = function
+        self.args       = args
+        self.kwargs     = kwargs
+        self.is_running = False
+        self.start()
+
+    def _run(self):
+        self.is_running = False
+        self.start()
+        self.function(*self.args, **self.kwargs)
+
+    def start(self):
+        if not self.is_running:
+            self._timer = Timer(self.interval, self._run)
+            self._timer.start()
+            self.is_running = True
+
+    def stop(self):
+        self._timer.cancel()
+        self.is_running = False
+
+
+def plot_filter(xs, ys=None, dt=None, c='C0', label='Filter', var=None, **kwargs):
+
+    if ys is None and dt is not None:
+        ys = xs
+        xs = np.arange(0, len(ys) * dt, dt)
+    if ys is None:
+        ys = xs
+        xs = range(len(ys))
+
+    lines = plt.plot(xs, ys, color=c, label=label, **kwargs)
+    if var is None:
+        return lines
+
+    var = np.asarray(var)
+    std = np.sqrt(var)
+    std_top = ys+std
+    std_btm = ys-std
+
+    plt.plot(xs, ys+std, linestyle=':', color='k', lw=2)
+    plt.plot(xs, ys-std, linestyle=':', color='k', lw=2)
+    plt.fill_between(xs, std_btm, std_top,
+                     facecolor='yellow', alpha=0.2)
+
+    return lines
+
+
+def plot_measurements(xs, ys=None, dt=None, color='k', lw=1, label='Measurements',
+                      lines=False, **kwargs):
+    if ys is None and dt is not None:
+        ys = xs
+        xs = np.arange(0, len(ys)*dt, dt)
+
+    plt.autoscale(tight=False)
+    if lines:
+        if ys is not None:
+            return plt.plot(xs, ys, color=color, lw=lw, ls='--', label=label, **kwargs)
+        else:
+            return plt.plot(xs, color=color, lw=lw, ls='--', label=label, **kwargs)
+    else:
+        if ys is not None:
+            return plt.scatter(xs, ys, edgecolor=color, facecolor='none',
+                        lw=2, label=label, **kwargs),
+        else:
+            return plt.scatter(range(len(xs)), xs, edgecolor=color, facecolor='none',
+                        lw=2, label=label, **kwargs),
+
+
+acquire_data = False
+Ts = 0.1
+thymio_data = []
+
+def motors(left, right):
+    return {
+        "motor.left.target": [left],
+        "motor.right.target": [right],
+    }
+
+# def get_data():
+#     thymio_data.append({"ground":list(node["prox.ground.reflected"]), 
+#                         "sensor":list(node["prox.ground.reflected"]),
+#                         "left_speed":node["motor.left.speed"],
+#                         "right_speed":node["motor.right.speed"]})
+    
+
+# if acquire_data:
+#     await node.wait_for_variables() # wait for Thymio variables values
+#     rt = RepeatedTimer(Ts, get_data) # it auto-starts, no need of rt.start()
+#     thymio_data = [{'ground': [177, 496], 'sensor': [177, 496], 'left_speed': 0, 'right_speed': 65535}]
+#     try:
+#          time.sleep would not work here, use asynchronous client.sleep method instead
+#         await client.sleep(5)
+#         node.send_set_variables(motors(55, 50))
+#         await client.sleep(25) # your long-running job goes here...
+#     finally:
+#         rt.stop() # better in a try/finally block to make sure the program ends!
+#         node.send_set_variables(motors(0, 0))
+# else:
+#     thymio_data = [{'ground': [177, 496], 'sensor': [177, 496], 'left_speed': 0, 'right_speed': 65535}, {'ground': [178, 495], 'sensor': [178, 495], 'left_speed': 0, 'right_speed': 65535}, {'ground': [177, 495], 'sensor': [177, 495], 'left_speed': 0, 'right_speed': 65535}, {'ground': [177, 496], 'sensor': [177, 496], 'left_speed': 0, 'right_speed': 65535}, {'ground': [177, 495], 'sensor': [177, 495], 'left_speed': 0, 'right_speed': 65535}, {'ground': [178, 496], 'sensor': [178, 496], 'left_speed': 0, 'right_speed': 65535}, {'ground': [178, 495], 'sensor': [178, 495], 'left_speed': 0, 'right_speed': 65535}, {'ground': [177, 496], 'sensor': [177, 496], 'left_speed': 0, 'right_speed': 65535}, {'ground': [177, 496], 'sensor': [177, 496], 'left_speed': 0, 'right_speed': 65535}, {'ground': [178, 495], 'sensor': [178, 495], 'left_speed': 0, 'right_speed': 65535}, {'ground': [177, 495], 'sensor': [177, 495], 'left_speed': 0, 'right_speed': 65535}, {'ground': [177, 497], 'sensor': [177, 497], 'left_speed': 0, 'right_speed': 65535}, {'ground': [177, 495], 'sensor': [177, 495], 'left_speed': 0, 'right_speed': 65535}, {'ground': [177, 495], 'sensor': [177, 495], 'left_speed': 0, 'right_speed': 65535}, {'ground': [178, 496], 'sensor': [178, 496], 'left_speed': 0, 'right_speed': 65535}, {'ground': [180, 546], 'sensor': [180, 546], 'left_speed': 0, 'right_speed': 65535}, {'ground': [177, 454], 'sensor': [177, 454], 'left_speed': 0, 'right_speed': 65535}, {'ground': [97, 69], 'sensor': [97, 69], 'left_speed': 0, 'right_speed': 65535}, {'ground': [39, 41], 'sensor': [39, 41], 'left_speed': 0, 'right_speed': 0}, {'ground': [82, 47], 'sensor': [82, 47], 'left_speed': 0, 'right_speed': 65535}, {'ground': [34, 29], 'sensor': [34, 29], 'left_speed': 0, 'right_speed': 65535}, {'ground': [24, 9], 'sensor': [24, 9], 'left_speed': 0, 'right_speed': 65535}, {'ground': [899, 447], 'sensor': [899, 447], 'left_speed': 0, 'right_speed': 65535}, {'ground': [967, 631], 'sensor': [967, 631], 'left_speed': 0, 'right_speed': 65535}, {'ground': [972, 682], 'sensor': [972, 682], 'left_speed': 0, 'right_speed': 65535}, {'ground': [971, 675], 'sensor': [971, 675], 'left_speed': 0, 'right_speed': 65535}, {'ground': [970, 651], 'sensor': [970, 651], 'left_speed': 0, 'right_speed': 65535}, {'ground': [971, 642], 'sensor': [971, 642], 'left_speed': 0, 'right_speed': 65535}, {'ground': [970, 628], 'sensor': [970, 628], 'left_speed': 0, 'right_speed': 65535}, {'ground': [970, 628], 'sensor': [970, 628], 'left_speed': 0, 'right_speed': 65535}, {'ground': [970, 628], 'sensor': [970, 628], 'left_speed': 0, 'right_speed': 65535}, {'ground': [970, 627], 'sensor': [970, 627], 'left_speed': 0, 'right_speed': 65535}, {'ground': [970, 611], 'sensor': [970, 611], 'left_speed': 0, 'right_speed': 65535}, {'ground': [971, 604], 'sensor': [971, 604], 'left_speed': 0, 'right_speed': 0}, {'ground': [971, 598], 'sensor': [971, 598], 'left_speed': 0, 'right_speed': 65535}, {'ground': [972, 642], 'sensor': [972, 642], 'left_speed': 0, 'right_speed': 65535}, {'ground': [973, 714], 'sensor': [973, 714], 'left_speed': 0, 'right_speed': 65535}, {'ground': [973, 704], 'sensor': [973, 704], 'left_speed': 0, 'right_speed': 65535}, {'ground': [973, 702], 'sensor': [973, 702], 'left_speed': 0, 'right_speed': 0}, {'ground': [972, 700], 'sensor': [972, 700], 'left_speed': 0, 'right_speed': 65535}, {'ground': [973, 701], 'sensor': [973, 701], 'left_speed': 0, 'right_speed': 0}, {'ground': [974, 707], 'sensor': [974, 707], 'left_speed': 0, 'right_speed': 0}, {'ground': [974, 711], 'sensor': [974, 711], 'left_speed': 0, 'right_speed': 65535}, {'ground': [974, 707], 'sensor': [974, 707], 'left_speed': 0, 'right_speed': 65535}, {'ground': [972, 702], 'sensor': [972, 702], 'left_speed': 0, 'right_speed': 65535}, {'ground': [973, 686], 'sensor': [973, 686], 'left_speed': 0, 'right_speed': 65535}, {'ground': [972, 662], 'sensor': [972, 662], 'left_speed': 0, 'right_speed': 65535}, {'ground': [968, 602], 'sensor': [968, 602], 'left_speed': 0, 'right_speed': 65535}, {'ground': [954, 539], 'sensor': [954, 539], 'left_speed': 0, 'right_speed': 65535}, {'ground': [833, 464], 'sensor': [833, 464], 'left_speed': 0, 'right_speed': 65535}, {'ground': [826, 460], 'sensor': [826, 460], 'left_speed': 2, 'right_speed': 65535}, {'ground': [511, 244], 'sensor': [511, 244], 'left_speed': 39, 'right_speed': 31}, {'ground': [306, 131], 'sensor': [306, 131], 'left_speed': 49, 'right_speed': 35}, {'ground': [194, 87], 'sensor': [194, 87], 'left_speed': 58, 'right_speed': 57}, {'ground': [174, 84], 'sensor': [174, 84], 'left_speed': 64, 'right_speed': 42}, {'ground': [174, 84], 'sensor': [174, 84], 'left_speed': 38, 'right_speed': 32}, {'ground': [174, 84], 'sensor': [174, 84], 'left_speed': 38, 'right_speed': 32}, {'ground': [171, 84], 'sensor': [171, 84], 'left_speed': 58, 'right_speed': 30}, {'ground': [169, 81], 'sensor': [169, 81], 'left_speed': 49, 'right_speed': 56}, {'ground': [167, 80], 'sensor': [167, 80], 'left_speed': 42, 'right_speed': 55}, {'ground': [167, 81], 'sensor': [167, 81], 'left_speed': 46, 'right_speed': 35}, {'ground': [168, 80], 'sensor': [168, 80], 'left_speed': 59, 'right_speed': 57}, {'ground': [172, 81], 'sensor': [172, 81], 'left_speed': 63, 'right_speed': 54}, {'ground': [173, 84], 'sensor': [173, 84], 'left_speed': 45, 'right_speed': 56}, {'ground': [171, 84], 'sensor': [171, 84], 'left_speed': 60, 'right_speed': 55}, {'ground': [171, 84], 'sensor': [171, 84], 'left_speed': 60, 'right_speed': 55}, {'ground': [165, 84], 'sensor': [165, 84], 'left_speed': 54, 'right_speed': 36}, {'ground': [166, 86], 'sensor': [166, 86], 'left_speed': 57, 'right_speed': 43}, {'ground': [166, 86], 'sensor': [166, 86], 'left_speed': 41, 'right_speed': 43}, {'ground': [168, 87], 'sensor': [168, 87], 'left_speed': 59, 'right_speed': 47}, {'ground': [175, 96], 'sensor': [175, 96], 'left_speed': 42, 'right_speed': 48}, {'ground': [280, 157], 'sensor': [280, 157], 'left_speed': 61, 'right_speed': 50}, {'ground': [503, 262], 'sensor': [503, 262], 'left_speed': 60, 'right_speed': 49}, {'ground': [658, 355], 'sensor': [658, 355], 'left_speed': 46, 'right_speed': 36}, {'ground': [639, 345], 'sensor': [639, 345], 'left_speed': 49, 'right_speed': 57}, {'ground': [639, 345], 'sensor': [639, 345], 'left_speed': 49, 'right_speed': 57}, {'ground': [501, 257], 'sensor': [501, 257], 'left_speed': 42, 'right_speed': 51}, {'ground': [187, 88], 'sensor': [187, 88], 'left_speed': 45, 'right_speed': 60}, {'ground': [166, 85], 'sensor': [166, 85], 'left_speed': 53, 'right_speed': 56}, {'ground': [166, 84], 'sensor': [166, 84], 'left_speed': 60, 'right_speed': 55}, {'ground': [168, 84], 'sensor': [168, 84], 'left_speed': 50, 'right_speed': 53}, {'ground': [169, 85], 'sensor': [169, 85], 'left_speed': 57, 'right_speed': 47}, {'ground': [167, 87], 'sensor': [167, 87], 'left_speed': 49, 'right_speed': 41}, {'ground': [169, 86], 'sensor': [169, 86], 'left_speed': 47, 'right_speed': 45}, {'ground': [167, 84], 'sensor': [167, 84], 'left_speed': 66, 'right_speed': 33}, {'ground': [164, 85], 'sensor': [164, 85], 'left_speed': 56, 'right_speed': 62}, {'ground': [162, 85], 'sensor': [162, 85], 'left_speed': 43, 'right_speed': 54}, {'ground': [163, 85], 'sensor': [163, 85], 'left_speed': 54, 'right_speed': 58}, {'ground': [163, 85], 'sensor': [163, 85], 'left_speed': 41, 'right_speed': 54}, {'ground': [160, 84], 'sensor': [160, 84], 'left_speed': 59, 'right_speed': 56}, {'ground': [156, 82], 'sensor': [156, 82], 'left_speed': 52, 'right_speed': 60}, {'ground': [157, 82], 'sensor': [157, 82], 'left_speed': 64, 'right_speed': 48}, {'ground': [162, 83], 'sensor': [162, 83], 'left_speed': 64, 'right_speed': 56}, {'ground': [166, 82], 'sensor': [166, 82], 'left_speed': 47, 'right_speed': 55}, {'ground': [165, 91], 'sensor': [165, 91], 'left_speed': 41, 'right_speed': 44}, {'ground': [254, 156], 'sensor': [254, 156], 'left_speed': 67, 'right_speed': 59}, {'ground': [477, 279], 'sensor': [477, 279], 'left_speed': 53, 'right_speed': 57}, {'ground': [678, 391], 'sensor': [678, 391], 'left_speed': 57, 'right_speed': 59}, {'ground': [762, 426], 'sensor': [762, 426], 'left_speed': 67, 'right_speed': 57}, {'ground': [738, 394], 'sensor': [738, 394], 'left_speed': 41, 'right_speed': 50}, {'ground': [649, 332], 'sensor': [649, 332], 'left_speed': 60, 'right_speed': 56}, {'ground': [596, 319], 'sensor': [596, 319], 'left_speed': 65, 'right_speed': 59}, {'ground': [593, 321], 'sensor': [593, 321], 'left_speed': 47, 'right_speed': 48}, {'ground': [596, 325], 'sensor': [596, 325], 'left_speed': 58, 'right_speed': 33}, {'ground': [601, 330], 'sensor': [601, 330], 'left_speed': 58, 'right_speed': 55}, {'ground': [605, 331], 'sensor': [605, 331], 'left_speed': 48, 'right_speed': 54}, {'ground': [608, 331], 'sensor': [608, 331], 'left_speed': 42, 'right_speed': 43}, {'ground': [607, 330], 'sensor': [607, 330], 'left_speed': 64, 'right_speed': 55}, {'ground': [605, 329], 'sensor': [605, 329], 'left_speed': 46, 'right_speed': 42}, {'ground': [605, 329], 'sensor': [605, 329], 'left_speed': 55, 'right_speed': 61}, {'ground': [604, 330], 'sensor': [604, 330], 'left_speed': 52, 'right_speed': 56}, {'ground': [604, 330], 'sensor': [604, 330], 'left_speed': 43, 'right_speed': 47}, {'ground': [607, 331], 'sensor': [607, 331], 'left_speed': 64, 'right_speed': 54}, {'ground': [604, 332], 'sensor': [604, 332], 'left_speed': 63, 'right_speed': 57}, {'ground': [600, 334], 'sensor': [600, 334], 'left_speed': 56, 'right_speed': 61}, {'ground': [598, 335], 'sensor': [598, 335], 'left_speed': 64, 'right_speed': 57}, {'ground': [594, 337], 'sensor': [594, 337], 'left_speed': 60, 'right_speed': 51}, {'ground': [592, 339], 'sensor': [592, 339], 'left_speed': 49, 'right_speed': 48}, {'ground': [593, 350], 'sensor': [593, 350], 'left_speed': 57, 'right_speed': 50}, {'ground': [642, 404], 'sensor': [642, 404], 'left_speed': 58, 'right_speed': 45}] 
+    
+    
+
+tracker = KalmanFilter(dim_x=4, dim_z=2)
+dt = 1.0   # time step
+qp = 0.04 # variance on position state
+rp = 0.25 # variance on position measurement 
+q_nu = 5 # variance on speed state
+r_nu = 5 # variance on speed measurement
+
+tracker.F = np.array ([[1, dt, 0,  0],
+                       [0,  1, 0,  0],
+                       [0,  0, 1, dt],
+                       [0,  0, 0,  1]])
+tracker.u = 0.
+tracker.H = np.array ([[1, 0, 0, 0],
+                       [0, 0, 1, 0]])
+
+tracker.R = np.array([[r_nu, 0],
+                      [0, rp]])
+
+tracker.Q = np.array ([[qp, 0, 0,  0],
+                       [0,  qp, 0,  0],
+                       [0,  0, q_nu, 0],
+                       [0,  0, 0,  q_nu]])
+
+tracker.x = np.array([[0,0,0,0]]).T
+tracker.P = np.eye(4) * 1000
+
+# initialize storage and other variables for the run
+
+xs, ys = [],[]
+pxs, pys = [],[]
+
+fake_pos = [[0,0],[0.2,0],[0.4,0],[0.6,0],[0.8,0],[0.9,0],[0.9,0.2],[0.9,0.4],[0.9,0.6],[0.9,0.7],[0.9,0.9],[0.9,1.2],[0.9,1.4],[0.9,1.5],[0.9,1.7],[0.9,1.9],[0.9,2.3],[0.9,2.5],[0.9,2.8],[0.9,3.1],[0.9,3.3],[0.9,3.5],[0.9,3.8],[1,4],[1.1,4],[1.4,4],[1.6,4],[1.9,4],[2.3,4],[2.5,4],[2.7,4],[2.9,4],[3.1,4.1],[3.4,3.95],[3.6,4],[4,4]]
+count = len(fake_pos)
+
+for i in range(count):
+    pos = fake_pos[i]
+    z = np.array([[pos[0]], [pos[1]]])
+
+    tracker.predict()
+    tracker.update(z)
+
+    xs.append(tracker.x[0,0])
+    ys.append(tracker.x[2,0])
+    pxs.append(pos[0])
+    pys.append(pos[1])
+
+    # Plot the measurement number as annotation
+    plt.annotate(f'{i + 1}', (pos[0], pos[1]), textcoords="offset points", xytext=(0, 5), ha='center')
+
+
+plot_filter(xs, ys)
+plot_measurements(pxs, pys)
+plt.legend(loc=2)
+plt.grid(True)
+plt.show()
+
