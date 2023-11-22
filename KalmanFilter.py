@@ -1,103 +1,180 @@
-import random
 import numpy as np
+import random
 import matplotlib.pyplot as plt
 
 
-class KalmanFilter:
-    def __init__(self, dt, sigma_q, sigma_r):
-        self.x = np.array([[0], [0], [0], [0]]) 
-        self.P = np.eye(4) * 25  
+class KalmanFilter(object):
+    def __init__(self, dim_x, dim_z, dt=0.1, dim_u=0,):
+        self.dim_x = dim_x
+        self.dim_z = dim_z
+        self.dim_u = dim_u
 
-        self.F = np.array([[1, dt, 0.5 * dt**2, 0],
-                           [0, 1, dt, 0],
-                           [0, 0, 1, dt],
-                           [0, 0, 0, 1]])
+        self.A = np.array([[1, 0, dt, 0],
+                           [0, 1, 0, dt],
+                           [0, 0, 1, 0],
+                           [0, 0, 0, 1]])  # state transition matrix
+        self.Q = np.array([[0.04, 0, 0, 0],
+                           [0, 0.04, 0, 0],
+                           [0, 0, 6, 0],
+                           [0, 0, 0, 6]])  # process uncertainty
+        self.H = np.zeros((dim_z, dim_x))  # measurement matrix
+        self.R = np.eye(dim_z)  # measurement uncertainty
 
-        self.Q = np.array([[sigma_q**2, 0, 0, 0],
-                           [0, sigma_q**2, 0, 0],
-                           [0, 0, sigma_q**2, 0],
-                           [0, 0, 0, sigma_q**2]])
+        self.x_est = np.zeros((dim_x, 1))  # state estimate
+        self.P_est = np.eye(dim_x) * 1000  # state covariance estimate
+        self.speed_conv_factor = 0.42  # conversion factor for speed
 
+    def predict(self, speed, orientation, x_est_prev, P_est_prev):
+        # Prediction through the a priori estimate
+        self.x_est = np.dot(self.A, x_est_prev)
+        self.P_est = np.dot(np.dot(self.A, P_est_prev), self.A.T)
+        self.P_est = self.P_est + self.Q if type(self.Q) != type(None) else self.P_est
+
+        # Update based on the measured speed and orientation
         self.H = np.array([[1, 0, 0, 0],
-                           [0, 1, 0, 0]])
+                           [0, 1, 0, 0],
+                           [0, 0, 1, 0],
+                           [0, 0, 0, 1]])  # Update measurement matrix
+        self.R = np.array([[0.25, 0, 0, 0],
+                           [0, 0.25, 0, 0],
+                           [0, 0, 6, 0],
+                           [0, 0, 0, 6]])  # Update measurement uncertainty
 
-        self.R = np.array([[sigma_r**2, 0],
-                           [0, sigma_r**2]])
+        # Convert orientation to a direction vector
+        direction = np.array([orientation[0][0],orientation[0][1]])
+        speed_array = np.array([speed[0], speed[1]])
 
-    def predict(self):
-        self.x = np.dot(self.F, self.x)
-        self.P = np.dot(np.dot(self.F, self.P), self.F.T) + self.Q
+        # Measurement vector based on speed and orientation
+        # Measurement vector based on speed and orientation
+        y = np.dot(self.H, self.x_est)
 
-    def update(self, z):
-        y = z - np.dot(self.H, self.x)
+        # Directly set the relevant elements of y
+        y[2] = abs(direction[0]) * speed_array[0] * self.speed_conv_factor
+        y[3] = abs(direction[1]) * speed_array[1] * self.speed_conv_factor
 
-        S = np.dot(np.dot(self.H, self.P), self.H.T) + self.R
+        # print("direction : \n", direction)
+        # print("Speed Array : \n", speed_array.T)
+        # print(" Y VECTOR : \n", y)
+        # Innovation / measurement residual
+        i = y - np.dot(self.H, self.x_est)
 
-        K = np.dot(np.dot(self.P, self.H.T), np.linalg.inv(S))
+        # Measurement prediction covariance
+        S = np.dot(self.H, np.dot(self.P_est, self.H.T)) + self.R
 
-        self.x = self.x + np.dot(K, y)
+        # Kalman gain
+        K = np.dot(self.P_est, np.dot(self.H.T, np.linalg.inv(S)))
 
-        I = np.eye(self.x.shape[0])
-        self.P = np.dot(np.dot(I - np.dot(K, self.H), self.P), (I - np.dot(K, self.H)).T) + np.dot(np.dot(K, self.R), K.T)
+        # A posteriori estimate
+        self.x_est = self.x_est + np.dot(K, i)
+        self.P_est = self.P_est - np.dot(K, np.dot(self.H, self.P_est))
+
+        # Extracting relevant information for the output
+        estimated_position = self.x_est[:2].flatten()
+        estimated_speed = np.linalg.norm(self.x_est[2:])
+        estimated_direction = direction.flatten()
+
+        # print("The new X_Prev is : \n", self.x_est)
+
+        return estimated_position, estimated_speed, estimated_direction, self.x_est, self.P_est
 
 
-qp = 0.04  # variance on position state
-rp = 0.25  # variance on position measurement
+def generate_fake_positions(movement_path, position_noise=0.05):
+    fake_positions = [movement_path[0]]
+
+    for i in range(1, len(movement_path)):
+        steps_forward = int(movement_path[i][0] - movement_path[i - 1][0])
+        steps_left = int(movement_path[i][1] - movement_path[i - 1][1])
+
+        # Move forward
+        for _ in range(abs(steps_forward)):
+            noise = np.random.normal(0, position_noise, 2)
+            fake_positions.append([fake_positions[-1][0] + np.sign(steps_forward) * (0.6 + noise[0]), 
+                                   fake_positions[-1][1] + noise[1]])
+
+        # Move left
+        for _ in range(abs(steps_left)):
+            noise = np.random.normal(0, position_noise, 2)
+            fake_positions.append([fake_positions[-1][0] + noise[0], 
+                                   fake_positions[-1][1] - np.sign(steps_left) * (0.6 + noise[1])])
+
+    return fake_positions
+
+
+def generate_fake_speeds_and_orientations(fake_positions, dt, speed_range=(0, 80), noise_std=0.01, orientation_noise=0.05):
+    fake_speeds = []
+
+    for i in range(1, len(fake_positions)):
+        delta_x = 2.6 * (fake_positions[i][0] - fake_positions[i - 1][0])
+        delta_y = 2.6 * (fake_positions[i][1] - fake_positions[i - 1][1])
+
+        # Calculate speed (speed = distance / time)
+        speed_x = delta_x / dt
+        speed_y = delta_y / dt
+
+        # Add noise to simulate uncertainties
+        speed_x += random.gauss(0, noise_std)
+        speed_y += random.gauss(0, noise_std)
+
+        # Determine orientation based on movement direction
+        orientation = np.array([delta_x, delta_y])
+        orientation /= np.linalg.norm(orientation)
+
+        # Add noise to orientation
+        orientation_noise_vector = np.random.normal(0, orientation_noise, 2)
+        orientation += orientation_noise_vector
+        orientation /= np.linalg.norm(orientation)
+
+        fake_speeds.append([speed_x, speed_y, orientation.tolist()])
+
+    return fake_speeds
+
+
+# Example of generating a movement path (straight line from [0, 0] to [8, 0])
+movement_path = [[0, 0], [5, 0], [5, 10], [10, 10], [15, 10], [20, 10],[20, 15], [20, 20], [30, 20]]
+
+# Example of using the Kalman filter with fake positions, speeds, and orientations
+tracker = KalmanFilter(dim_x=4, dim_z=2)
 dt = 0.1
-real_positions = []
+qp = 0.04
+rp = 0.25 
+q_nu = 5
+r_nu = 5
+
+fake_positions = generate_fake_positions(movement_path)
+fake_speeds = generate_fake_speeds_and_orientations(fake_positions, dt)
+# print("Fake positions : \n")
+# print(fake_positions)
+# print("Fake speeds : \n")
+# print(fake_speeds)
+
+initial_condition = [np.array([[0], [0], [0], [0]])]
+initial_orientation = np.array([[1], [0]]) 
+initial_covariance = [np.ones(4) * 1000]
+
+# Lists to store the estimated positions
+x_est = initial_condition
+P_est = initial_covariance
 estimated_positions = []
-kf = KalmanFilter(dt, qp, rp)
 
-label_offset = 0.1  
-label_fontsize = 12 
-
-for t in range(10):
-    control_x = random.randint(-1, 1)
-    control_y = random.randint(-1, 1)
-
-    estimate_x = np.array([[control_x], [control_y]])
-    estimate_P = np.eye(4) * 1  
-
-    kf.predict()
-    kf.update(estimate_x)
-
-    estimated_position = (kf.x[0, 0], kf.x[1, 0])
-
-    real_positions.append((control_x, control_y))
+# Perform prediction and update for each time step (assuming constant speed and orientation)
+for i in range(len(fake_speeds)):
+    speed_i = fake_speeds[i][:2]
+    orientation_i = fake_speeds[i][2:]
+    estimated_position, _, _, new_x_est, new_P_est = tracker.predict(speed=speed_i, orientation=orientation_i, x_est_prev=x_est[-1], P_est_prev=P_est[-1])
+    x_est.append(new_x_est)
+    P_est.append(new_P_est)
     estimated_positions.append(estimated_position)
 
-plt.plot([position[0] for position in real_positions],
-         [position[1] for position in real_positions],
-         'r-o', 
-         label='Real position')
+# Convert lists to NumPy arrays for easier plotting
+fake_positions = np.array(fake_positions)
+estimated_positions = np.array(estimated_positions)
 
-plt.plot([position[0] for position in estimated_positions],
-         [position[1] for position in estimated_positions],
-         'b-o', 
-         label='Estimated position')
-
-plt.scatter(real_positions[0][0], real_positions[0][1], color='green', marker='s', label='Start (Real)')
-plt.scatter(estimated_positions[0][0], estimated_positions[0][1], color='purple', marker='s', label='Start (Estimated)')
-
-for i, (real_pos, est_pos) in enumerate(zip(real_positions[:-1], estimated_positions[:-1])):
-    plt.plot([real_pos[0], real_positions[i + 1][0]],
-             [real_pos[1], real_positions[i + 1][1]],
-             'r-')
-    plt.plot([est_pos[0], estimated_positions[i + 1][0]],
-             [est_pos[1], estimated_positions[i + 1][1]],
-             'b-')
-    plt.text(real_pos[0] + label_offset, real_pos[1] + label_offset, str(i + 1), fontsize=label_fontsize, color='red')
-    plt.text(est_pos[0] + label_offset, est_pos[1] + label_offset, str(i + 1), fontsize=label_fontsize, color='blue')
-
-# Add labels for the last point
-plt.text(real_positions[-1][0] + label_offset, real_positions[-1][1] + label_offset, str(len(real_positions)),
-         fontsize=label_fontsize, color='red')
-plt.text(estimated_positions[-1][0] + label_offset, estimated_positions[-1][1] + label_offset, str(len(estimated_positions)),
-         fontsize=label_fontsize, color='blue')
-
-plt.title("Kalman Filter Position Estimation")
-plt.xlabel("X")
-plt.ylabel("Y")
+# Plot the original movement path and the estimated positions
+plt.plot(fake_positions[:, 0], fake_positions[:, 1], label='Original Path', marker='o')
+plt.plot(estimated_positions[:, 0], estimated_positions[:, 1], label='Estimated Positions', marker='x')
 plt.legend()
+plt.xlabel('X Position')
+plt.ylabel('Y Position')
+plt.title('Original Path vs. Estimated Positions')
+plt.grid(True)
 plt.show()
-
