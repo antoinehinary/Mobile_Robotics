@@ -1,6 +1,7 @@
 import numpy as np
 import random
 import matplotlib.pyplot as plt
+import math
 
 
 class KalmanFilter(object):
@@ -156,6 +157,55 @@ x_est = initial_condition
 P_est = initial_covariance
 estimated_positions = []
 
+
+def generate_fake_motor_speeds(num_steps, straight_prob=0.7, max_speed=80): 
+    motor_speeds = []
+
+    for _ in range(num_steps):
+        if random.uniform(0, 1) < straight_prob:
+            # Generate similar speeds for straight line movement
+            speed = random.uniform(0, max_speed)
+            motor_speeds.append((speed, speed))
+        else:
+            # Generate varying speeds for turning
+            left_speed = random.uniform(0, max_speed)
+            right_speed = random.uniform(0, max_speed)
+            motor_speeds.append((left_speed, right_speed))
+
+    return motor_speeds
+
+
+def compute_robot_direction(left_wheel_speed, right_wheel_speed, current_direction):
+    # Convert the current direction vector to polar coordinates
+    current_angle = np.arctan2(current_direction[1], current_direction[0])
+    
+    # Compute the linear speed of the robot
+    linear_speed = (left_wheel_speed + right_wheel_speed) / 2.0
+    
+    # Compute the angular speed of the robot
+    angular_speed = (right_wheel_speed - left_wheel_speed) / 2.0
+    
+    new_angle = np.arctan2(angular_speed,linear_speed)
+    # Update the direction of the robot based on the current angle and angular speed
+    #new_angle = current_angle + angular_speed
+    
+    # Compute the new direction vector
+    new_direction_vector = np.array([np.cos(new_angle), np.sin(new_angle)])
+    
+    return new_direction_vector
+
+# Example usage:
+num_steps = 50
+fake_motor_speeds = generate_fake_motor_speeds(num_steps)
+
+orientations = [[1,0]]
+for left_speed, right_speed in fake_motor_speeds:
+    final_direction = compute_robot_direction(left_speed, right_speed,current_direction=orientations[-1])
+    orientations.append(final_direction)
+    print(f"Left Speed = {left_speed}, Right Speed = {right_speed}, Orientation = {final_direction}")
+
+print(np.arctan2(1,0))
+
 # Perform prediction and update for each time step (assuming constant speed and orientation)
 for i in range(len(fake_speeds)):
     speed_i = fake_speeds[i][:2]
@@ -170,11 +220,11 @@ fake_positions = np.array(fake_positions)
 estimated_positions = np.array(estimated_positions)
 
 # Plot the original movement path and the estimated positions
-plt.plot(fake_positions[:, 0], fake_positions[:, 1], label='Original Path', marker='o')
-plt.plot(estimated_positions[:, 0], estimated_positions[:, 1], label='Estimated Positions', marker='x')
-plt.legend()
-plt.xlabel('X Position')
-plt.ylabel('Y Position')
-plt.title('Original Path vs. Estimated Positions')
-plt.grid(True)
-plt.show()
+# plt.plot(fake_positions[:, 0], fake_positions[:, 1], label='Original Path', marker='o')
+# plt.plot(estimated_positions[:, 0], estimated_positions[:, 1], label='Estimated Positions', marker='x')
+# plt.legend()
+# plt.xlabel('X Position')
+# plt.ylabel('Y Position')
+# plt.title('Original Path vs. Estimated Positions')
+# plt.grid(True)
+# plt.show()
