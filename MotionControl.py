@@ -3,7 +3,7 @@ import matplotlib.pyplot as plt
 import math
 
 # PID Controller parameters
-kp = 5.0  # Proportional gain
+kp = 8.0  # Proportional gain
 ki = 0.1  # Integral gain
 kd = 0.01  # Derivative gain
 
@@ -32,28 +32,16 @@ def generate_l_path():
 
     return path
 
-def compute_robot_direction(left_wheel_speed, right_wheel_speed):
-    epsilon = 1e-6 
-    linear_speed = (left_wheel_speed + right_wheel_speed) / 2.0
-    angular_speed = (right_wheel_speed - left_wheel_speed) / robot_width
-
-    if np.abs(linear_speed) < epsilon:
-        new_direction_vector = np.array([1.0, 0.0])
-    else:
-        new_angle = np.arctan2(angular_speed, linear_speed)
-        new_direction_vector = np.array([np.cos(new_angle), np.sin(new_angle)])
-
-    return new_direction_vector
-
 # Simulate movements of the robot based on motor speeds and orientation
-def simulate_movement(position, direction_vector, left_speed, right_speed):
-    linear_speed = (left_speed + right_speed) / 2.0
-    direction_vector = compute_robot_direction(left_speed, right_speed)
-
-    # Simulate robot movement
-    position += direction_vector * linear_speed * dt
-
-    return position, direction_vector
+def simulate_movement(position, angle, left_speed, right_speed, dt):
+    # Assuming the robot moves in a straight line between time steps
+    angle += (right_speed - left_speed) * dt / 2.0 # approximate angular velocity
+    dxy = (left_speed + right_speed) / 2.0 * dt # average velocity in x and y directions
+    dx = dxy * math.cos(angle)
+    dy = dxy * math.sin(angle)
+    position[0] += dx
+    position[1] += dy
+    return position, angle
 
 # PID Controller
 def pid_controller(current_error, previous_error, integral):
@@ -66,29 +54,42 @@ def pid_controller(current_error, previous_error, integral):
 # Follow the path using PID control with correction
 def follow_path_with_correction(path):
     position = np.array([0.0, 0.0])
-    direction_vector = np.array([1.0, 0.0])
+    angle = 0.0
     integral = 0.0
 
     plt.plot(*zip(*path), 'g-', label='Path to Follow')
 
+    # Find the nearest point on the path
+    nearest_point_idx = np.argmin(np.sum((position - np.array(path))**2, axis=1))
+    if nearest_point_idx != 0:
+        target_point = np.array(path[nearest_point_idx]) 
+    else :
+        target_point = np.array(path[1]) 
+
     for t in np.arange(0, total_time, dt):
-        # Find the nearest point on the path
-        nearest_point_idx = np.argmin(np.sum((position - np.array(path))**2, axis=1))
-        target_point = np.array(path[nearest_point_idx])
+
+        # If the robot is very close to the target point, move to the next point in the path
+        print( " Norm to point is : ", np.linalg.norm(position - target_point))
+        if np.linalg.norm(position - target_point) < 0.2:
+            nearest_point_idx = (nearest_point_idx + 1)
+            target_point = np.array(path[nearest_point_idx])
+            print( " TARGET IS REACHED \n")
+            print(" New target is : ", target_point)
 
         # Calculate the angle between the robot and the path
-        angle_error = math.atan2(target_point[1] - position[1], target_point[0] - position[0]) - np.arctan2(direction_vector[1], direction_vector[0])
+        angle_error = math.atan2(target_point[1] - position[1], target_point[0] - position[0]) - angle
 
         # PID control to adjust motor speeds
         correction, integral = pid_controller(angle_error, 0, integral)
 
         # Adjust left and right motor speeds
-        left_speed = 1.0 - correction
-        right_speed = 1.0 + correction
+        left_speed = 3.0 - correction
+        right_speed = 3.0 + correction
 
         # Simulate robot movement
-        position, direction_vector = simulate_movement(position, direction_vector, left_speed, right_speed)
-
+        position, angle = simulate_movement(position, angle, left_speed, right_speed, dt)
+        print( " Now at : ", position )
+        print( " And target is : ", target_point)
         # Visualization (optional)
         plt.plot(position[0], position[1], 'bo')
         plt.pause(0.1)
