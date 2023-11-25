@@ -43,19 +43,48 @@ def simulate_movement(position, angle, left_speed, right_speed, dt):
     position[1] += dy
     return position, angle
 
-# PID Controller
-def pid_controller(current_error, previous_error, integral):
+# Fake PID Controller
+def fake_pid_controller(current_error, previous_error, integral):
     proportional = kp * current_error
     integral += ki * current_error
     derivative = kd * (current_error - previous_error)
 
-    return proportional + integral + derivative, integral
+    correction = proportional + integral + derivative
+    return correction, integral, previous_error
+
+
+
+# PID Controller for Thymio testing 
+# INUT : 
+#   target_point 
+#   position
+#   integral
+#   angle
+#   previous_error
+#   left_speed
+#   right_speed
+# OUTPU :
+#   Left motor Speed
+#   RIght motor Speed
+#   Error Integral
+#   The computed angular error
+def pid_controller(target_point, position, integral, angle, previous_error, left_speed, right_speed):
+    angle_error = math.atan2(target_point[1] - position[1], target_point[0] - position[0]) - angle
+    proportional = kp * angle_error
+    integral += ki * angle_error
+    derivative = kd * (angle_error - previous_error) / dt
+    correction = proportional + integral + derivative
+    updated_left_speed = left_speed - correction
+    updated_right_speed = right_speed + correction
+
+    return updated_left_speed, updated_right_speed, integral, angle_error
 
 # Follow the path using PID control with correction
 def follow_path_with_correction(path):
-    position = np.array([0.0, 0.0])
+    position = np.array([0.0, 0.0]) # initial position
     angle = 0.0
     integral = 0.0
+    previous_error = 0.0
 
     plt.plot(*zip(*path), 'g-', label='Path to Follow')
 
@@ -66,8 +95,7 @@ def follow_path_with_correction(path):
     else :
         target_point = np.array(path[1]) 
 
-    for t in np.arange(0, total_time, dt):
-
+    while nearest_point_idx < len(path):
         # If the robot is very close to the target point, move to the next point in the path
         print( " Norm to point is : ", np.linalg.norm(position - target_point))
         if np.linalg.norm(position - target_point) < 0.2:
@@ -76,15 +104,21 @@ def follow_path_with_correction(path):
             print( " TARGET IS REACHED \n")
             print(" New target is : ", target_point)
 
-        # Calculate the angle between the robot and the path
         angle_error = math.atan2(target_point[1] - position[1], target_point[0] - position[0]) - angle
 
         # PID control to adjust motor speeds
-        correction, integral = pid_controller(angle_error, 0, integral)
+        # updated_left_speed, updated_right_speed, integral, previous_error = pid_controller(target_point, position, integral, angle, previous_error, left_speed, right_speed)
 
-        # Adjust left and right motor speeds
+        # PID control to adjust motor speeds For fake testing 
+        correction, integral, previous_error = fake_pid_controller(angle_error, previous_error, integral)
+
+        # Adjust left and right motor speeds for fake simulation
         left_speed = 3.0 - correction
         right_speed = 3.0 + correction
+
+        # # Adjust left and right motor speeds for Thymio testing 
+        # left_speed = updated_left_speed
+        # right_speed = updated_right_speed
 
         # Simulate robot movement
         position, angle = simulate_movement(position, angle, left_speed, right_speed, dt)
