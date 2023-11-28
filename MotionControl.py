@@ -3,7 +3,7 @@ import matplotlib.pyplot as plt
 import math
 
 # PID Controller parameters
-kp = 8.0  # Proportional gain
+kp = 7.5  # Proportional gain
 ki = 0.1  # Integral gain
 kd = 0.01  # Derivative gain
 
